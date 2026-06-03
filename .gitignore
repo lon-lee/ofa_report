@@ -1,5 +1,6 @@
-# 최종 결과물 XLSX 파일 제외
+# 최종 결과물 XLSX 파일 제외 (템플릿은 예외)
 *.xlsx
+!template/*.xlsx
 
 # macOS
 .DS_Store
