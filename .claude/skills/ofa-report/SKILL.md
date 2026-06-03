@@ -16,7 +16,7 @@ description: Use when asked to generate 해외금융계좌신고 (overseas finan
 | url_slug | apple-computer-inc | investing.com URL의 종목 슬러그 |
 | holdings | 1000 | 보유 주수 |
 
-**파일명 형식**: `[{ticker_korean}]+해외금융계좌신고+요청자료({year}년)_최선영.xlsx`
+**파일명 형식**: `[{ticker_korean}]+해외금융계좌신고+요청자료({year}년).xlsx`
 
 ## Template Cell Mapping
 ```
@@ -127,7 +127,7 @@ for i, month in enumerate(range(1, 13)):
     ws[f'G{row}'] = close_price     # 종가
     ws[f'I{row}'] = exch_rate       # 환율
 
-output_filename = f'[{ticker_korean}]+해외금융계좌신고+요청자료({year}년)_최선영.xlsx'
+output_filename = f'[{ticker_korean}]+해외금융계좌신고+요청자료({year}년).xlsx'
 wb.save(output_filename)
 print(f"저장 완료: {output_filename}")
 ```
