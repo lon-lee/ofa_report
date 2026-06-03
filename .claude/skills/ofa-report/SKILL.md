@@ -6,21 +6,17 @@ description: Use when asked to generate 해외금융계좌신고 (overseas finan
 # 해외금융계좌 신고 보고서 생성
 
 ## Overview
-연도·종목·보유주수를 입력받아 investing.com에서 월말 종가·환율 데이터를 수집하고 Google Drive 템플릿 XLSX를 업데이트하여 신고용 파일을 생성한다.
-
-## Fixed References
-- **템플릿 파일 ID**: `1tKDBX2fMywt_gmsO-E5mqge0xYhccl4h`
-- **저장 폴더 ID**: `1EEJS6l7uHe2TtdHiHBuLeRjNHlsNJWc1`
-- **파일명 형식**: `[{ticker_korean}]+해외금융계좌신고+요청자료({year}년)_최선영.xlsx`
-  - 예) `[쿠팡]+해외금융계좌신고+요청자료(2025년)_최선영.xlsx`
+연도·종목·보유주수를 입력받아 investing.com에서 월말 종가·환율 데이터를 수집하고, 로컬 템플릿 XLSX를 업데이트하여 신고용 파일을 생성한다.
 
 ## Required Inputs
 | 항목 | 예시 | 설명 |
 |------|------|------|
 | year | 2025 | 신고 대상 연도 |
-| ticker_korean | 쿠팡 | 파일명에 사용할 한글 종목명 |
-| url_slug | coupang-llc | investing.com URL의 종목 슬러그 |
-| holdings | 14500 | 보유 주수 |
+| ticker_korean | 애플 | 파일명에 사용할 한글 종목명 |
+| url_slug | apple-computer-inc | investing.com URL의 종목 슬러그 |
+| holdings | 1000 | 보유 주수 |
+
+**파일명 형식**: `[{ticker_korean}]+해외금융계좌신고+요청자료({year}년)_최선영.xlsx`
 
 ## Template Cell Mapping
 ```
@@ -69,7 +65,6 @@ return JSON.stringify(data);
 ### 월말 마지막 거래일 추출 (Python)
 ```python
 import calendar
-from datetime import date
 
 def get_monthly_last_trading(data: dict, year: int) -> dict:
     """
@@ -101,36 +96,25 @@ def parse_investing_date(date_str: str) -> str:
     또는 영문 'Jan 31, 2025' → '2025-01-31'
     """
     try:
-        # 한국어 형식 시도
         dt = datetime.strptime(date_str.strip(), '%Y년 %m월 %d일')
     except ValueError:
-        # 영문 형식 시도
         dt = datetime.strptime(date_str.strip(), '%b %d, %Y')
     return dt.strftime('%Y-%m-%d')
 ```
 
-## Step 2: 템플릿 다운로드
+## Step 2: 로컬 템플릿 로드
 
-Google Drive MCP `download_file_content` 사용:
-```
-fileId: 1tKDBX2fMywt_gmsO-E5mqge0xYhccl4h
-exportMimeType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-```
-
-base64 디코딩하여 로컬 임시 파일로 저장:
-```python
-import base64
-template_path = '/tmp/ofa_template.xlsx'
-with open(template_path, 'wb') as f:
-    f.write(base64.b64decode(base64_content))
-```
-
-## Step 3: XLSX 셀 업데이트
-
+저장소 내 `template/ofa_template.xlsx`를 openpyxl로 직접 로드한다:
 ```python
 import openpyxl
 
+template_path = 'template/ofa_template.xlsx'
 wb = openpyxl.load_workbook(template_path)
+```
+
+## Step 3: XLSX 셀 업데이트 후 저장
+
+```python
 ws = wb.active  # 첫 번째 시트 사용
 
 for i, month in enumerate(range(1, 13)):
@@ -144,18 +128,11 @@ for i, month in enumerate(range(1, 13)):
     ws[f'I{row}'] = exch_rate       # 환율
 
 output_filename = f'[{ticker_korean}]+해외금융계좌신고+요청자료({year}년)_최선영.xlsx'
-output_path = f'/tmp/{output_filename}'
-wb.save(output_path)
+wb.save(output_filename)
+print(f"저장 완료: {output_filename}")
 ```
 
 **주의**: openpyxl은 기존 수식을 보존한다. D/E/F/H열 수식은 Excel에서 파일을 열면 자동 재계산되므로 수정 불필요.
-
-## Step 4: Google Drive 업로드
-
-Google Drive MCP `create_file` 사용:
-- 파일명: `[{ticker_korean}]+해외금융계좌신고+요청자료({year}년)_최선영.xlsx`
-- 부모 폴더 ID: `1EEJS6l7uHe2TtdHiHBuLeRjNHlsNJWc1`
-- 로컬 경로의 파일 업로드
 
 ## Common Issues
 
