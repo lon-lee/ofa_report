@@ -2,7 +2,7 @@
 
 Claude Code + Playwright MCP를 이용해 매년 해외금융계좌신고(OFA) 제출용 XLSX 파일을 자동 생성합니다.
 
-investing.com에서 월말 종가·환율 데이터를 수집하고, 로컬 템플릿(`template/ofa_template.xlsx`)에 채워 넣어 신고용 파일을 저장합니다.
+investing.com에서 월말 종가·환율 데이터를 수집하고, 로컬 템플릿(`template/ofa_template.xlsx`)에 채워 넣어 신고용 파일을 저장합니다. **여러 종목을 한 번에 처리할 수 있습니다.**
 
 ---
 
@@ -47,7 +47,11 @@ cp -r .claude/skills/ofa-report ~/.claude/skills/
 Claude Code에서 다음과 같이 입력합니다.
 
 ```
-2025년 애플 해외금융계좌신고 만들어줘. 보유주수는 1000주야.
+# 단일 종목
+2025년 애플 1000주 해외금융계좌신고 만들어줘.
+
+# 복수 종목 (환율은 한 번만 수집)
+2025년 애플 1000주, 쿠팡 14500주 해외금융계좌신고 만들어줘.
 ```
 
 또는 직접 스킬을 호출합니다.
@@ -65,6 +69,8 @@ Claude Code에서 다음과 같이 입력합니다.
 | url_slug | apple-computer-inc | investing.com URL 슬러그 |
 | holdings | 1000 | 보유 주수 |
 
+복수 종목 시 ticker_korean, url_slug, holdings를 종목 수만큼 제공합니다.
+
 `url_slug`는 investing.com 종목 페이지 URL에서 확인합니다.  
 예) `https://kr.investing.com/equities/apple-computer-inc-historical-data` → `apple-computer-inc`
 
@@ -73,10 +79,10 @@ Claude Code에서 다음과 같이 입력합니다.
 ## 처리 흐름
 
 ```
-1. investing.com에서 해당 연도 월말 종가·환율 수집 (Playwright)
-2. 로컬 템플릿 로드 (template/ofa_template.xlsx)
-3. openpyxl로 B/C/G/I 열 데이터 입력 (D/E/F 열은 수식 자동계산)
-4. 완성 파일을 현재 디렉토리에 저장
+1. investing.com에서 환율 데이터 수집 (1회, 종목 수와 무관)
+2. 종목별로 종가 데이터 수집 (Playwright)
+3. 종목별로 템플릿 로드 후 B/C/G/I 열 입력 (D/E/F 열은 수식 자동계산)
+4. 종목별 파일을 현재 디렉토리에 저장
 ```
 
 ---

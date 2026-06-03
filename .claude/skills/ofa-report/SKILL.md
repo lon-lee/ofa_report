@@ -1,20 +1,30 @@
 ---
 name: ofa-report
-description: Use when asked to generate 해외금융계좌신고 (overseas financial account report) XLSX file. Triggers on phrases like "해외금융계좌신고 만들어줘", "OFA 신고 파일", ticker + year + 신고, "해외계좌 보고서". Requires year, Korean ticker name, investing.com URL slug, and holdings as inputs.
+description: Use when asked to generate 해외금융계좌신고 (overseas financial account report) XLSX file. Triggers on phrases like "해외금융계좌신고 만들어줘", "OFA 신고 파일", ticker + year + 신고, "해외계좌 보고서". Supports multiple tickers in one request. Requires year, and per-ticker: Korean ticker name, investing.com URL slug, and holdings.
 ---
 
 # 해외금융계좌 신고 보고서 생성
 
 ## Overview
-연도·종목·보유주수를 입력받아 investing.com에서 월말 종가·환율 데이터를 수집하고, 로컬 템플릿 XLSX를 업데이트하여 신고용 파일을 생성한다.
+연도와 1개 이상의 종목·보유주수를 입력받아 investing.com에서 데이터를 수집하고, 종목별로 신고용 XLSX 파일을 생성한다.  
+환율 데이터는 종목과 무관하므로 **한 번만 수집**하고, 종목별 종가 수집 후 각각 파일을 저장한다.
 
 ## Required Inputs
 | 항목 | 예시 | 설명 |
 |------|------|------|
 | year | 2025 | 신고 대상 연도 |
+| tickers | 아래 참고 | 종목 목록 (1개 이상) |
+
+각 종목별 필요 정보:
+| 항목 | 예시 | 설명 |
+|------|------|------|
 | ticker_korean | 애플 | 파일명에 사용할 한글 종목명 |
 | url_slug | apple-computer-inc | investing.com URL의 종목 슬러그 |
 | holdings | 1000 | 보유 주수 |
+
+**입력 예시**:
+- 단일: `2025년 애플 1000주`
+- 복수: `2025년 애플 1000주, 쿠팡 14500주`
 
 **파일명 형식**: `[{ticker_korean}]+해외금융계좌신고+요청자료({year}년).xlsx`
 
@@ -30,47 +40,71 @@ H15:H26  공란
 I15:I26  환율 (USD/KRW, investing.com 기준 월말 환율)
 ```
 
-## Step 1: investing.com 데이터 수집
+## Step 1: 환율 데이터 수집 (1회)
 
-Playwright로 JavaScript 렌더링 페이지에서 연간 일별 데이터를 수집한다.
+**환율 URL**: `https://kr.investing.com/currencies/usd-krw-historical-data`
 
-**환율 URL**: `https://kr.investing.com/currencies/usd-krw-historical-data`  
-**종가 URL**: `https://kr.investing.com/equities/{url_slug}-historical-data`
+Playwright로 날짜 범위를 `{year}-01-01` ~ `{year}-12-31`로 설정 후 데이터 추출.
 
 ### Playwright 날짜 범위 설정 절차
 1. `browser_navigate`로 URL 접속
-2. `browser_snapshot`으로 날짜 필터 UI 요소 확인 (보통 우측 상단에 날짜 범위 표시)
-3. 날짜 범위 클릭 → 달력 UI 열림
+2. `browser_snapshot`으로 날짜 필터 UI 요소 확인
+3. 날짜 범위 클릭 → 입력창 열림
 4. 시작일 `{year}-01-01`, 종료일 `{year}-12-31` 입력
-5. 적용 버튼 클릭 후 테이블 로딩 대기 (`browser_wait_for`)
-6. `browser_snapshot`으로 데이터 테이블 확인 후 `browser_evaluate`로 추출
+5. 적용 버튼 클릭 후 `browser_wait_for`로 해당 연도 데이터 로딩 대기
+6. `browser_evaluate`로 테이블 데이터 추출
 
 ### 테이블 데이터 추출 (JavaScript)
 ```javascript
-// browser_evaluate로 실행
 const rows = document.querySelectorAll('table tbody tr');
 const data = [];
 rows.forEach(row => {
   const cells = row.querySelectorAll('td');
   if (cells.length >= 2) {
-    data.push({
-      date: cells[0].textContent.trim(),
-      close: cells[1].textContent.trim()
-    });
+    data.push({ date: cells[0].textContent.trim(), close: cells[1].textContent.trim() });
   }
 });
 return JSON.stringify(data);
 ```
 
-### 월말 마지막 거래일 추출 (Python)
+## Step 2: 종목별 종가 수집 (종목 수만큼 반복)
+
+**종가 URL**: `https://kr.investing.com/equities/{url_slug}-historical-data`
+
+각 종목마다 동일한 날짜 범위 설정 절차를 반복한다.
+
+## Step 3: 데이터 파싱 유틸
+
 ```python
 import calendar
+from datetime import datetime
 
-def get_monthly_last_trading(data: dict, year: int) -> dict:
-    """
-    data = {'2025-01-31': 1450.5, ...}  날짜→종가/환율 dict
-    returns {1: ('2025-01-31', 1450.5), 2: ('2025-02-28', 1430.0), ...}
-    """
+def parse_investing_date(date_str: str) -> str:
+    try:
+        return datetime.strptime(date_str.strip(), '%Y년 %m월 %d일').strftime('%Y-%m-%d')
+    except ValueError:
+        return datetime.strptime(date_str.strip(), '%b %d, %Y').strftime('%Y-%m-%d')
+
+def parse_investing_value(val: str) -> float:
+    return float(val.replace(',', '').strip())
+
+def parse_raw_json(raw_json_str: str) -> dict:
+    """browser_evaluate 결과(이중 인코딩 문자열)를 날짜→값 dict로 변환"""
+    import json
+    rows = json.loads(json.loads(raw_json_str))
+    result = {}
+    for d in rows:
+        date = parse_investing_date(d.get('date', '')) if '년' in d.get('date', '') else None
+        if not date:
+            continue
+        try:
+            result[date] = parse_investing_value(d['close'])
+        except:
+            pass
+    return result
+
+def get_monthly_last(data: dict, year: int) -> dict:
+    """각 월의 마지막 거래일 추출. returns {1: ('2025-01-31', 236.0), ...}"""
     result = {}
     for month in range(1, 13):
         last_day = calendar.monthrange(year, month)[1]
@@ -80,56 +114,33 @@ def get_monthly_last_trading(data: dict, year: int) -> dict:
                 result[month] = (key, data[key])
                 break
     return result
-
-def parse_investing_value(val: str) -> float:
-    """'1,470.00' → 1470.0, '21.98' → 21.98"""
-    return float(val.replace(',', '').strip())
 ```
 
-### 날짜 파싱 (investing.com 한국어 형식)
-```python
-from datetime import datetime
+## Step 4: 종목별 XLSX 생성
 
-def parse_investing_date(date_str: str) -> str:
-    """
-    '2025년 01월 31일' → '2025-01-31'
-    또는 영문 'Jan 31, 2025' → '2025-01-31'
-    """
-    try:
-        dt = datetime.strptime(date_str.strip(), '%Y년 %m월 %d일')
-    except ValueError:
-        dt = datetime.strptime(date_str.strip(), '%b %d, %Y')
-    return dt.strftime('%Y-%m-%d')
-```
+환율은 공통이므로 `exch_monthly`는 Step 1에서 한 번만 계산. 종목마다 템플릿을 새로 로드해서 저장.
 
-## Step 2: 로컬 템플릿 로드
-
-저장소 내 `template/ofa_template.xlsx`를 openpyxl로 직접 로드한다:
 ```python
 import openpyxl
 
-template_path = 'template/ofa_template.xlsx'
-wb = openpyxl.load_workbook(template_path)
-```
+def generate_xlsx(year, ticker_korean, holdings, stock_monthly, exch_monthly):
+    wb = openpyxl.load_workbook('template/ofa_template.xlsx')
+    ws = wb.active
+    for i, month in enumerate(range(1, 13)):
+        row = 15 + i
+        date_str, close_price = stock_monthly[month]
+        _, exch_rate = exch_monthly[month]
+        ws[f'B{row}'] = date_str
+        ws[f'C{row}'] = holdings
+        ws[f'G{row}'] = close_price
+        ws[f'I{row}'] = exch_rate
+    filename = f'[{ticker_korean}]+해외금융계좌신고+요청자료({year}년).xlsx'
+    wb.save(filename)
+    print(f"저장 완료: {filename}")
 
-## Step 3: XLSX 셀 업데이트 후 저장
-
-```python
-ws = wb.active  # 첫 번째 시트 사용
-
-for i, month in enumerate(range(1, 13)):
-    row = 15 + i  # 15~26행
-    date_str, close_price = stock_monthly[month]
-    _, exch_rate = exch_monthly[month]
-
-    ws[f'B{row}'] = date_str        # 기준일
-    ws[f'C{row}'] = holdings        # 보유 주수
-    ws[f'G{row}'] = close_price     # 종가
-    ws[f'I{row}'] = exch_rate       # 환율
-
-output_filename = f'[{ticker_korean}]+해외금융계좌신고+요청자료({year}년).xlsx'
-wb.save(output_filename)
-print(f"저장 완료: {output_filename}")
+# 복수 종목 처리 예시
+for ticker in tickers:
+    generate_xlsx(year, ticker['korean'], ticker['holdings'], ticker['stock_monthly'], exch_monthly)
 ```
 
 **주의**: openpyxl은 기존 수식을 보존한다. D/E/F/H열 수식은 Excel에서 파일을 열면 자동 재계산되므로 수정 불필요.
@@ -138,9 +149,9 @@ print(f"저장 완료: {output_filename}")
 
 | 문제 | 해결 방법 |
 |------|----------|
-| 테이블 로딩 안됨 | `browser_wait_for`로 테이블 `tbody tr` 요소 대기 |
-| 월말이 주말/공휴일 | `get_monthly_last_trading()`이 역순 탐색으로 자동 처리 |
+| 테이블 로딩 안됨 | `browser_wait_for`로 해당 연도 첫 달 텍스트 대기 |
+| 월말이 주말/공휴일 | `get_monthly_last()`이 역순 탐색으로 자동 처리 |
 | 환율에 쉼표 포함 | `parse_investing_value()`로 정규화 |
 | 날짜 형식 불일치 | `parse_investing_date()`의 두 가지 형식 처리 |
-| 데이터 로딩 페이지 수 부족 | 스크롤 또는 페이지네이션 확인 필요 |
+| url_slug 모를 때 | investing.com에서 종목 검색 후 URL에서 확인 |
 | openpyxl 수식 덮어쓰기 | D/E/F/H열은 절대 직접 쓰지 말 것 |
