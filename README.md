@@ -11,40 +11,46 @@ investing.com에서 월말 종가·환율 데이터를 수집하고, 로컬 템�
 | 항목 | 내용 |
 |------|------|
 | [Claude Code](https://claude.ai/code) | CLI 설치 필요 |
-| Playwright MCP | `@playwright/mcp` 서버 연결 |
 | Python 3 + openpyxl | `pip install openpyxl` |
-
-### MCP 서버 설정 (`~/.claude/settings.json`)
-
-```json
-{
-  "mcpServers": {
-    "playwright": {
-      "command": "npx",
-      "args": ["@playwright/mcp"]
-    }
-  }
-}
-```
 
 ---
 
-## 스킬 설치
+## 설치
+
+### 1. 저장소 클론
 
 ```bash
-# 저장소 클론
 git clone https://github.com/lon-lee/ofa_report.git
 cd ofa_report
-
-# 스킬 설치 (전역)
-cp -r .claude/skills/ofa-report ~/.claude/skills/
 ```
+
+스킬은 `.claude/skills/ofa-report/` 에 포함되어 있어 **이 디렉토리에서 Claude Code를 실행하면 자동으로 인식**됩니다. 별도 설치 불필요.
+
+### 2. Playwright MCP 연결
+
+아래 명령어 한 줄로 추가됩니다:
+
+```bash
+claude mcp add playwright npx @playwright/mcp
+```
+
+> 수동으로 추가하려면 프로젝트 루트의 `.claude/settings.json`에 아래 내용을 추가하세요.
+> ```json
+> {
+>   "mcpServers": {
+>     "playwright": {
+>       "command": "npx",
+>       "args": ["@playwright/mcp"]
+>     }
+>   }
+> }
+> ```
 
 ---
 
 ## 사용법
 
-Claude Code에서 다음과 같이 입력합니다.
+이 디렉토리에서 Claude Code를 실행한 뒤 다음과 같이 입력합니다.
 
 ```
 # 단일 종목
